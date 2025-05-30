@@ -12,6 +12,7 @@ import (
 // the configured ALLOWED_ORIGINS environment variable.
 func CORS(next http.Handler) http.Handler {
 	allowedOrigins := getAllowedOrigins()
+	env := os.Getenv("GO_ENV")
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
@@ -19,8 +20,8 @@ func CORS(next http.Handler) http.Handler {
 		// Check if origin is allowed
 		if isAllowedOrigin(origin, allowedOrigins) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
-		} else if len(allowedOrigins) == 0 {
-			// No restrictions configured — allow all (development mode)
+		} else if len(allowedOrigins) == 0 && env != "production" {
+			// No restrictions configured — allow all only in development mode
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 		}
 

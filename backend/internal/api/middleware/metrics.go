@@ -80,13 +80,17 @@ func RecordSubmission(status, language string) {
 func normalizePath(path string) string {
 	// Simple normalization: replace /submissions/123 with /submissions/:id
 	// A proper implementation would use a router-aware approach
+	if path == "" {
+		return "/"
+	}
+
 	result := make([]byte, 0, len(path))
 	i := 0
 	for i < len(path) {
 		if path[i] == '/' {
 			result = append(result, '/')
 			i++
-			// Check if next segment is all digits
+			// Read the next segment until '/' or end
 			j := i
 			for j < len(path) && path[j] != '/' {
 				j++
@@ -99,6 +103,8 @@ func normalizePath(path string) string {
 			}
 			i = j
 		} else {
+			// Handle paths that don't start with '/' (shouldn't happen, but be safe)
+			result = append(result, path[i])
 			i++
 		}
 	}

@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"strings"
-	"sync"
 
 	"github.com/executo/backend/internal/executor"
 )
@@ -14,16 +13,12 @@ import (
 // RunHandler handles the playground /run endpoint for direct code execution.
 type RunHandler struct {
 	judge0 *executor.Judge0Client
-	// In-memory store for run tokens (maps our token → Judge0 token)
-	mu     sync.RWMutex
-	tokens map[string]string
 }
 
 // NewRunHandler creates a new RunHandler.
 func NewRunHandler(judge0Client *executor.Judge0Client) *RunHandler {
 	return &RunHandler{
 		judge0: judge0Client,
-		tokens: make(map[string]string),
 	}
 }
 
@@ -37,6 +32,9 @@ type RunRequest struct {
 // ── POST /run ─────────────────────────────────
 // Submits code to Judge0 for execution (playground mode, no test cases).
 func (h *RunHandler) CreateRun(w http.ResponseWriter, r *http.Request) {
+	// Limit request body size to 1MB to prevent memory exhaustion
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
 	var req RunRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid request body")

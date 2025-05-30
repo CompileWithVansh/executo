@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import dynamic from "next/dynamic";
 import {
   Play, RotateCcw, ChevronDown, Terminal,
@@ -108,12 +108,14 @@ export default function PlaygroundPage() {
     [lang.id]
   );
 
+  const handleRunRef = useRef<() => void>(() => {});
+
   // Ctrl+Enter shortcut
   useEffect(() => {
-    const h = () => handleRun();
+    const h = () => handleRunRef.current();
     window.addEventListener("editor:submit", h);
     return () => window.removeEventListener("editor:submit", h);
-  });
+  }, []);
 
   const handleRun = useCallback(async () => {
     if (runStatus === "running") return;
@@ -148,6 +150,9 @@ export default function PlaygroundPage() {
       setRunStatus("error");
     }
   }, [code, lang.judge0Id, stdin, runStatus]);
+
+  // Keep the ref in sync with the latest handleRun
+  handleRunRef.current = handleRun;
 
   const handleReset = () => {
     setCodes((p) => ({ ...p, [lang.id]: lang.default }));

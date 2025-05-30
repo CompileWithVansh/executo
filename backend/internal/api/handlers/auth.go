@@ -246,24 +246,19 @@ func (h *AuthHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build update query dynamically
+	// Always update bio (allows clearing it to empty string)
 	updates := []string{}
 	args := []interface{}{}
 	argIdx := 1
 
-	if req.Bio != "" {
-		updates = append(updates, fmt.Sprintf("bio = $%d", argIdx))
-		args = append(args, req.Bio)
-		argIdx++
-	}
+	updates = append(updates, fmt.Sprintf("bio = $%d", argIdx))
+	args = append(args, req.Bio)
+	argIdx++
+
 	if req.AvatarURL != "" {
 		updates = append(updates, fmt.Sprintf("avatar_url = $%d", argIdx))
 		args = append(args, req.AvatarURL)
 		argIdx++
-	}
-
-	if len(updates) == 0 {
-		writeError(w, http.StatusBadRequest, "no fields to update")
-		return
 	}
 
 	query := fmt.Sprintf("UPDATE users SET %s WHERE id = $%d",

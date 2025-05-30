@@ -37,6 +37,9 @@ func (h *SubmissionsHandler) CreateSubmission(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Limit request body size to 1MB to prevent memory exhaustion
+	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+
 	// Parse request body
 	var req models.CreateSubmissionRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

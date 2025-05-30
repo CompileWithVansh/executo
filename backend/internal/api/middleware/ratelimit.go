@@ -112,28 +112,44 @@ func SubmissionRateLimit(next http.Handler) http.Handler {
 	return submissionLimiter.Limit(next)
 }
 
-// extractIP gets the real client IP, respecting X-Forwarded-For from Nginx.
+// extractIP gets the real client IP from the request.
+// It only trusts X-Forwarded-For/X-Real-IP when the direct connection
+// comes from a private/loopback address (i.e., a trusted reverse proxy).
+// This prevents clients from spoofing their IP to bypass rate limiting.
 func extractIP(r *http.Request) string {
-	// Check X-Forwarded-For (set by Nginx)
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// Take the first IP in the chain
-		parts := splitAndTrim(xff, ",")
-		if len(parts) > 0 && parts[0] != "" {
-			return parts[0]
+	// Get the direct connection IP first
+	directIP, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		directIP = r.RemoteAddr
+	}
+
+	// Only trust proxy headers if the direct connection is from a trusted source
+	// (loopback or private network, meaning it came through our reverse proxy)
+	if isTrustedProxy(directIP) {
+		// Check X-Forwarded-For (set by Nginx)
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := splitAndTrim(xff, ",")
+			if len(parts) > 0 && parts[0] != "" {
+				return parts[0]
+			}
+		}
+
+		// Check X-Real-IP (also set by Nginx)
+		if xri := r.Header.Get("X-Real-IP"); xri != "" {
+			return xri
 		}
 	}
 
-	// Check X-Real-IP (also set by Nginx)
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
+	return directIP
+}
 
-	// Fall back to RemoteAddr
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
+// isTrustedProxy returns true if the IP is a loopback or private network address.
+func isTrustedProxy(ip string) bool {
+	parsed := net.ParseIP(ip)
+	if parsed == nil {
+		return false
 	}
-	return ip
+	return parsed.IsLoopback() || parsed.IsPrivate()
 }
 
 // splitAndTrim splits a string by sep and trims whitespace from each part.

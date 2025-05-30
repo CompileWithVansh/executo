@@ -77,6 +77,9 @@ func Load() (*Config, error) {
 	if cfg.Database.URL == "" {
 		return nil, fmt.Errorf("database URL is required (set POSTGRES_URL or individual POSTGRES_* vars)")
 	}
+	if cfg.Auth.JWTSecret == "" {
+		return nil, fmt.Errorf("JWT_SECRET is required")
+	}
 
 	return cfg, nil
 }
