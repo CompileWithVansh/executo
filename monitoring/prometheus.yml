@@ -1,0 +1,57 @@
+# ─────────────────────────────────────────────
+#  Executo — Prometheus Scrape Configuration
+# ─────────────────────────────────────────────
+
+global:
+  scrape_interval: 15s       # How often to scrape targets
+  evaluation_interval: 15s   # How often to evaluate rules
+  scrape_timeout: 10s
+
+  # Labels added to all time series
+  external_labels:
+    monitor: "executo"
+    environment: "production"
+
+# ── Alerting ──────────────────────────────────
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ["alertmanager:9093"]
+
+# ── Rule Files ────────────────────────────────
+# rule_files:
+#   - "rules/*.yml"
+
+# ── Scrape Configs ────────────────────────────
+scrape_configs:
+  # Prometheus self-monitoring
+  - job_name: "prometheus"
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # Go backend — exposes /metrics via prometheus/client_golang
+  - job_name: "executo-backend"
+    static_configs:
+      - targets: ["backend:8080"]
+    metrics_path: "/metrics"
+    scrape_interval: 10s
+
+  # Nginx (requires nginx-prometheus-exporter sidecar)
+  # - job_name: "nginx"
+  #   static_configs:
+  #     - targets: ["nginx-exporter:9113"]
+
+  # PostgreSQL (requires postgres_exporter)
+  # - job_name: "postgres"
+  #   static_configs:
+  #     - targets: ["postgres-exporter:9187"]
+
+  # Redis (requires redis_exporter)
+  # - job_name: "redis"
+  #   static_configs:
+  #     - targets: ["redis-exporter:9121"]
+
+  # Node exporter (host metrics)
+  # - job_name: "node"
+  #   static_configs:
+  #     - targets: ["node-exporter:9100"]

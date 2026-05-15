@@ -1,0 +1,200 @@
+# ─────────────────────────────────────────────
+#  Executo — Full Stack Docker Compose
+# ─────────────────────────────────────────────
+
+services:
+  # ── PostgreSQL ──────────────────────────────
+  postgres:
+    image: postgres:15-alpine
+    container_name: executo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-executo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+      POSTGRES_DB: ${POSTGRES_DB:-executo_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/internal/db/migrations:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-executo} -d ${POSTGRES_DB:-executo_db}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - executo-net
+
+  # ── Redis ────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: executo-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - executo-net
+
+  # ── Judge0 Server ────────────────────────────
+  judge0-server:
+    image: judge0/judge0:1.13.1
+    container_name: executo-judge0-server
+    restart: unless-stopped
+    volumes:
+      - ./judge0/judge0.conf:/judge0.conf:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "2358:2358"
+    privileged: true
+    environment:
+      REDIS_URL: redis://redis:6379
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-executo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-executo}
+      POSTGRES_DB: judge0
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - executo-net
+
+  # ── Judge0 Workers ───────────────────────────
+  judge0-workers:
+    image: judge0/judge0:1.13.1
+    container_name: executo-judge0-workers
+    restart: unless-stopped
+    command: ["./scripts/workers"]
+    volumes:
+      - ./judge0/judge0.conf:/judge0.conf:ro
+      - /var/run/docker.sock:/var/run/docker.sock
+    privileged: true
+    environment:
+      REDIS_URL: redis://redis:6379
+      POSTGRES_HOST: postgres
+      POSTGRES_USER: ${POSTGRES_USER:-executo}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-executo}
+      POSTGRES_DB: judge0
+    depends_on:
+      - judge0-server
+    networks:
+      - executo-net
+
+  # ── Go Backend ───────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: executo-backend
+    restart: unless-stopped
+    environment:
+      POSTGRES_URL: postgres://${POSTGRES_USER:-executo}:${POSTGRES_PASSWORD:-executo}@postgres:5432/${POSTGRES_DB:-executo_db}?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      JUDGE0_URL: http://judge0-server:2358
+      JUDGE0_API_KEY: ${JUDGE0_API_KEY:-}
+      BACKEND_PORT: ${BACKEND_PORT:-8080}
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required}
+    ports:
+      - "8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    networks:
+      - executo-net
+
+  # ── Next.js Frontend ─────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: executo-frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost/api}
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - executo-net
+
+  # ── Nginx Reverse Proxy ──────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: executo-nginx
+    restart: unless-stopped
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - executo-net
+
+  # ── Prometheus ───────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: executo-prometheus
+    restart: unless-stopped
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    ports:
+      - "9090:9090"
+    networks:
+      - executo-net
+
+  # ── Grafana ──────────────────────────────────
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: executo-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_SERVER_ROOT_URL: "%(protocol)s://%(domain)s/grafana/"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboard.json:/etc/grafana/provisioning/dashboards/executo.json:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - executo-net
+
+# ── Volumes ──────────────────────────────────────
+volumes:
+  postgres_data:
+  redis_data:
+  prometheus_data:
+  grafana_data:
+
+# ── Networks ─────────────────────────────────────
+networks:
+  executo-net:
+    driver: bridge

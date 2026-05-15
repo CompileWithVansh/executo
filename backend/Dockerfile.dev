@@ -1,0 +1,26 @@
+# ─────────────────────────────────────────────
+#  Executo Backend — Development Dockerfile
+#  Uses Air for live reload
+# ─────────────────────────────────────────────
+
+FROM golang:1.22-alpine
+
+# Install development tools
+RUN apk add --no-cache git curl
+
+# Install Air for live reload
+RUN go install github.com/air-verse/air@latest
+
+WORKDIR /app
+
+# Copy go.mod and go.sum
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Air config is in .air.toml
+COPY .air.toml* ./
+
+EXPOSE 8080
+
+# Air watches for file changes and rebuilds automatically
+CMD ["air", "-c", ".air.toml"]

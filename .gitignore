@@ -1,0 +1,51 @@
+# ─────────────────────────────────────────────
+#  Executo — .gitignore
+# ─────────────────────────────────────────────
+
+# ── Environment files (SECRETS) ──────────────
+.env
+.env.local
+.env.*.local
+frontend/.env.local
+backend/.env
+
+# ── Build documentation (internal only) ──────
+HOW_TO_BUILD.md
+
+# ── Frontend ─────────────────────────────────
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/package-lock.json
+
+# ── Backend ──────────────────────────────────
+backend/bin/
+backend/tmp/
+*.test
+
+# ── Docker volumes (local dev data) ──────────
+postgres_data/
+redis_data/
+judge0_data/
+
+# ── Graphify (knowledge graph) ────────────────
+# Keep graph report + visualization, ignore cache
+graphify-out/cache/
+graphify-out/.graphify_labels.json
+graphify-out/.graphify_root
+
+# ── IDE ──────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── OS ───────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ── Logs ─────────────────────────────────────
+*.log
+logs/
