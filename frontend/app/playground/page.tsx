@@ -125,9 +125,7 @@ export default function PlaygroundPage() {
     setNetError(null);
 
     try {
-      const base = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080";
-
-      const submitRes = await axios.post(`${base}/api/run`, {
+      const submitRes = await axios.post("/api/run", {
         source_code: btoa(unescape(encodeURIComponent(code))),
         language_id: lang.judge0Id,
         stdin: stdin ? btoa(unescape(encodeURIComponent(stdin))) : "",
@@ -137,7 +135,7 @@ export default function PlaygroundPage() {
 
       for (let i = 0; i < 20; i++) {
         await new Promise((r) => setTimeout(r, 1000));
-        const poll = await axios.get(`${base}/api/run/${token}`);
+        const poll = await axios.get(`/api/run/${token}`);
         const data: RunResult = poll.data;
         if (data.status.id > 2) {
           setResult(data);

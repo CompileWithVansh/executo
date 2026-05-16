@@ -102,11 +102,14 @@ func (rl *RateLimiter) Limit(next http.Handler) http.Handler {
 	})
 }
 
+// submissionLimiter is a package-level rate limiter for the submission endpoint.
+// 5 submissions per minute per IP, burst of 5.
+var submissionLimiter = NewRateLimiter(5.0/60.0, 5)
+
 // SubmissionRateLimit is a stricter rate limiter for the submission endpoint.
 // Allows 5 submissions per minute per IP.
 func SubmissionRateLimit(next http.Handler) http.Handler {
-	rl := NewRateLimiter(5.0/60.0, 5) // 5 per minute, burst of 5
-	return rl.Limit(next)
+	return submissionLimiter.Limit(next)
 }
 
 // extractIP gets the real client IP, respecting X-Forwarded-For from Nginx.

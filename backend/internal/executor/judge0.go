@@ -153,6 +153,57 @@ func (c *Judge0Client) Submit(
 	return submitResp.Token, nil
 }
 
+// ── SubmitRaw ─────────────────────────────────
+
+// SubmitRaw sends already-base64-encoded code to Judge0 (used by the playground).
+// Unlike Submit(), this does NOT re-encode the source code.
+func (c *Judge0Client) SubmitRaw(sourceCodeB64 string, languageID int, stdinB64 string) (string, error) {
+	req := SubmitRequest{
+		SourceCode:   sourceCodeB64,
+		LanguageID:   languageID,
+		CPUTimeLimit: 5.0,
+		MemoryLimit:  262144,
+	}
+
+	if stdinB64 != "" {
+		req.Stdin = stdinB64
+	}
+
+	body, err := json.Marshal(req)
+	if err != nil {
+		return "", fmt.Errorf("marshaling submit request: %w", err)
+	}
+
+	httpReq, err := http.NewRequest(
+		http.MethodPost,
+		c.baseURL+"/submissions?base64_encoded=true&wait=false",
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		return "", fmt.Errorf("creating HTTP request: %w", err)
+	}
+
+	c.setHeaders(httpReq)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return "", fmt.Errorf("sending submit request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("judge0 returned status %d: %s", resp.StatusCode, string(respBody))
+	}
+
+	var submitResp SubmitResponse
+	if err := json.NewDecoder(resp.Body).Decode(&submitResp); err != nil {
+		return "", fmt.Errorf("decoding submit response: %w", err)
+	}
+
+	return submitResp.Token, nil
+}
+
 // ── Poll ──────────────────────────────────────
 
 // GetResult fetches the current result for a submission token.

@@ -1,178 +1,246 @@
-# Graph Report - executo  (2026-05-15)
+# Graph Report - Executo (2026-05-16)
 
 ## Corpus Check
-- 45 files · ~27,641 words
+- 47 files · ~28,500 words
 - Verdict: corpus is large enough that graph structure adds value.
 
 ## Summary
-- 382 nodes · 459 edges · 31 communities (24 shown, 7 thin omitted)
-- Extraction: 93% EXTRACTED · 7% INFERRED · 0% AMBIGUOUS · INFERRED: 33 edges (avg confidence: 0.8)
-- Token cost: 0 input · 0 output
+- 395 nodes · 478 edges · 31 communities
+- Extraction: 94% EXTRACTED · 6% INFERRED · 0% AMBIGUOUS
 
-## Community Hubs (Navigation)
-- [[_COMMUNITY_Community 0|Community 0]]
-- [[_COMMUNITY_Community 1|Community 1]]
-- [[_COMMUNITY_Community 2|Community 2]]
-- [[_COMMUNITY_Community 3|Community 3]]
-- [[_COMMUNITY_Community 4|Community 4]]
-- [[_COMMUNITY_Community 5|Community 5]]
-- [[_COMMUNITY_Community 6|Community 6]]
-- [[_COMMUNITY_Community 7|Community 7]]
-- [[_COMMUNITY_Community 8|Community 8]]
-- [[_COMMUNITY_Community 9|Community 9]]
-- [[_COMMUNITY_Community 10|Community 10]]
-- [[_COMMUNITY_Community 11|Community 11]]
-- [[_COMMUNITY_Community 12|Community 12]]
-- [[_COMMUNITY_Community 13|Community 13]]
-- [[_COMMUNITY_Community 14|Community 14]]
-- [[_COMMUNITY_Community 15|Community 15]]
-- [[_COMMUNITY_Community 16|Community 16]]
-- [[_COMMUNITY_Community 17|Community 17]]
-- [[_COMMUNITY_Community 18|Community 18]]
-- [[_COMMUNITY_Community 19|Community 19]]
-- [[_COMMUNITY_Community 20|Community 20]]
-- [[_COMMUNITY_Community 21|Community 21]]
-- [[_COMMUNITY_Community 22|Community 22]]
-- [[_COMMUNITY_Community 23|Community 23]]
-- [[_COMMUNITY_Community 24|Community 24]]
-- [[_COMMUNITY_Community 25|Community 25]]
-- [[_COMMUNITY_Community 26|Community 26]]
-- [[_COMMUNITY_Community 27|Community 27]]
-- [[_COMMUNITY_Community 28|Community 28]]
+## Architecture Overview
 
-## God Nodes (most connected - your core abstractions)
-1. `dependencies` - 17 edges
-2. `compilerOptions` - 15 edges
-3. `devDependencies` - 14 edges
-4. `Executo — LeetCode-Style Code Execution Platform` - 11 edges
-5. `writeJSON()` - 10 edges
-6. `writeError()` - 10 edges
-7. `Worker` - 10 edges
-8. `NewRouter()` - 9 edges
-9. `Judge0 CE — Self-Hosted Setup` - 9 edges
-10. `Executo` - 8 edges
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                          User Browser                           │
+│                    (Next.js 14 Frontend)                        │
+└────────────────────────────┬────────────────────────────────────┘
+                             │ HTTP (port 80)
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                         Nginx Reverse Proxy                     │
+│          /api/* → backend:8080   /  → frontend:3000             │
+└──────────────┬──────────────────────────┬───────────────────────┘
+               │                          │
+               ▼                          ▼
+┌──────────────────────┐    ┌─────────────────────────┐
+│   Go Backend (8080)  │    │  Next.js Frontend (3000) │
+│  - REST API          │    │  - Monaco Editor         │
+│  - Asynq Worker      │    │  - Problem list/detail   │
+│  - Rate limiting     │    │  - Playground            │
+│  - Prometheus metrics│    │  - Leaderboard           │
+└──────┬───────────────┘    └─────────────────────────┘
+       │
+       ├──────────────────────────────────┐
+       │                                  │
+       ▼                                  ▼
+┌─────────────────┐            ┌──────────────────────┐
+│  PostgreSQL (5432)│           │    Redis (6379)       │
+│  - problems      │           │    - Asynq job queue  │
+│  - submissions   │           │    - Rate limit state │
+│  - suggested_tc  │           └──────────┬───────────┘
+└─────────────────┘                       │
+                                          ▼
+                               ┌──────────────────────┐
+                               │   Asynq Worker (Go)  │
+                               │   - Dequeues jobs    │
+                               │   - Calls Judge0 API │
+                               │   - Updates DB       │
+                               └──────────┬───────────┘
+                                          │
+                                          ▼
+                               ┌──────────────────────┐
+                               │  Judge0 CE (2358)    │
+                               │  - Runs code in      │
+                               │    Docker containers │
+                               │  - Returns verdict   │
+                               └──────────────────────┘
 
-## Surprising Connections (you probably didn't know these)
-- `NewRouter()` --calls--> `NewSubmissionsHandler()`  [INFERRED]
-  backend/internal/api/router.go → backend/internal/api/handlers/submissions.go
-- `main()` --calls--> `NewRouter()`  [INFERRED]
-  backend/cmd/server/main.go → backend/internal/api/router.go
-- `NewRouter()` --calls--> `NewProblemsHandler()`  [INFERRED]
-  backend/internal/api/router.go → backend/internal/api/handlers/problems.go
-- `NewRouter()` --calls--> `NewTestCasesHandler()`  [INFERRED]
-  backend/internal/api/router.go → backend/internal/api/handlers/testcases.go
-- `NewRouter()` --calls--> `Metrics()`  [INFERRED]
-  backend/internal/api/router.go → backend/internal/api/middleware/metrics.go
+┌─────────────────────────────────────────────────────┐
+│              Monitoring Stack                        │
+│  Prometheus (9090) ← scrapes backend /metrics       │
+│  Grafana (3001)    ← visualizes Prometheus data     │
+└─────────────────────────────────────────────────────┘
+```
 
-## Communities (31 total, 7 thin omitted)
+## Data Flow: Code Submission
 
-### Community 0 - "Community 0"
-Cohesion: 0.07
-Nodes (37): AcceptanceBar(), DifficultyBadge(), ProblemListProps, OutputBlock(), SubmissionResult(), SubmissionResultProps, clsx, TabId (+29 more)
+```
+User writes code → POST /submissions → Backend validates →
+  → Save to PostgreSQL (status: pending) →
+  → Enqueue to Redis (Asynq) →
+  → Worker picks up job →
+  → Worker calls Judge0 for each test case →
+  → Judge0 runs in Docker sandbox →
+  → Worker updates PostgreSQL with verdict →
+  → Frontend polls GET /submissions/:id →
+  → User sees result
+```
 
-### Community 1 - "Community 1"
-Cohesion: 0.07
-Nodes (25): 1. Via SQL (recommended for bulk), 2. Via API (POST /api/problems), Adding New Problems, Architecture Overview, Backend → PostgreSQL, Backend → Redis, code:block1 (┌───────────────────────────────────────────────────────────), code:bash (curl -X POST http://localhost:8080/api/problems \) (+17 more)
+## Data Flow: Playground Run
 
-### Community 2 - "Community 2"
-Cohesion: 0.08
-Nodes (24): devDependencies, autoprefixer, eslint, eslint-config-next, jest, postcss, prettier, tailwindcss (+16 more)
+```
+User writes code → POST /run → Backend forwards to Judge0 →
+  → Returns token →
+  → Frontend polls GET /run/:token →
+  → Judge0 returns stdout/stderr/metrics →
+  → User sees output
+```
 
-### Community 3 - "Community 3"
-Cohesion: 0.08
-Nodes (24): annotations, list, description, editable, fiscalYearStartMonth, graphTooltip, id, __inputs (+16 more)
+## God Nodes (most connected - core abstractions)
+1. `NewRouter()` - 12 edges (wires all handlers + middleware)
+2. `Worker` - 10 edges (orchestrates Judge0 execution)
+3. `Judge0Client` - 9 edges (code execution interface)
+4. `DB` - 8 edges (database connection layer)
+5. `writeJSON()` / `writeError()` - 10 edges each (shared response helpers)
+6. `ProblemsHandler` - 7 edges (problem CRUD)
+7. `SubmissionsHandler` - 7 edges (submission lifecycle)
+8. `RunHandler` - 4 edges (playground execution)
 
-### Community 4 - "Community 4"
-Cohesion: 0.13
-Nodes (7): Client, ExecuteSubmissionPayload, executionResult, NewExecuteSubmissionTask(), ParseExecuteSubmissionPayload(), Worker, nullString()
+## Module Dependency Graph
 
-### Community 5 - "Community 5"
-Cohesion: 0.1
-Nodes (19): code:block1 (Your Code → Judge0 API → isolate (sandbox) → Docker containe), code:bash (make dev), code:bash (# Check the API), code:block4 (JUDGE0_URL=https://judge0-ce.p.rapidapi.com), code:bash (# Check logs), code:bash (# Check workers are running), Configuration, How Judge0 Works (+11 more)
+```
+cmd/server/main.go
+  ├── internal/api/router.go
+  │     ├── internal/api/handlers/problems.go
+  │     ├── internal/api/handlers/submissions.go
+  │     ├── internal/api/handlers/testcases.go
+  │     ├── internal/api/handlers/run.go
+  │     ├── internal/api/handlers/health.go
+  │     ├── internal/api/middleware/cors.go
+  │     ├── internal/api/middleware/metrics.go
+  │     ├── internal/api/middleware/ratelimit.go
+  │     └── internal/executor/judge0.go
+  ├── internal/db/db.go
+  ├── internal/executor/judge0.go
+  └── internal/queue/worker.go
+        ├── internal/queue/tasks.go
+        ├── internal/executor/judge0.go
+        └── internal/models/*.go
+```
 
-### Community 6 - "Community 6"
-Cohesion: 0.17
-Nodes (14): NewRouter(), NewProblemsHandler(), NewTestCasesHandler(), CORS(), getAllowedOrigins(), isAllowedOrigin(), ipLimiter, extractIP() (+6 more)
+## Frontend Component Tree
 
-### Community 7 - "Community 7"
-Cohesion: 0.11
-Nodes (18): compilerOptions, allowJs, esModuleInterop, incremental, isolatedModules, jsx, lib, module (+10 more)
+```
+app/layout.tsx (RootLayout)
+  ├── components/Navbar.tsx
+  ├── app/page.tsx (HomePage - landing)
+  ├── app/playground/page.tsx (PlaygroundPage)
+  │     └── components/Editor.tsx (Monaco wrapper)
+  ├── app/problems/page.tsx (ProblemsPage)
+  │     └── components/ProblemList.tsx
+  ├── app/problems/[id]/page.tsx (ProblemDetailPage)
+  │     ├── components/Editor.tsx
+  │     └── components/SubmissionResult.tsx
+  └── app/leaderboard/page.tsx (LeaderboardPage)
+```
 
-### Community 8 - "Community 8"
-Cohesion: 0.11
-Nodes (12): CreateProblemRequest, Difficulty, Example, FunctionSignatures, JSONArray, JSONMap, PatchTestCaseRequest, Problem (+4 more)
+## API Endpoints
 
-### Community 9 - "Community 9"
-Cohesion: 0.24
-Nodes (8): extractIDFromPath(), parseIntParam(), writeError(), writeJSON(), ProblemsHandler, NewSubmissionsHandler(), parseInt64(), SubmissionsHandler
+| Method | Path | Handler | Description |
+|--------|------|---------|-------------|
+| GET | /health | HealthHandler | Service health check |
+| POST | /run | RunHandler.CreateRun | Playground code execution |
+| GET | /run/:token | RunHandler.GetRunResult | Poll playground result |
+| GET | /problems | ProblemsHandler.ListProblems | List problems (paginated) |
+| GET | /problems/:id | ProblemsHandler.GetProblem | Get problem by ID |
+| GET | /problems/slug/:slug | ProblemsHandler.GetProblemBySlug | Get problem by slug |
+| GET | /problems/:slug/testcases | TestCasesHandler.GetApprovedTestCases | Public test cases |
+| POST | /problems/:slug/suggest-testcase | TestCasesHandler.SuggestTestCase | Suggest test case |
+| POST | /submissions | SubmissionsHandler.CreateSubmission | Submit code |
+| GET | /submissions/:id | SubmissionsHandler.GetSubmission | Poll submission result |
+| GET | /submissions?problem_id= | SubmissionsHandler.ListSubmissions | List submissions |
+| GET | /leaderboard | SubmissionsHandler.GetLeaderboard | Leaderboard |
+| GET | /stats | ProblemsHandler.GetStats | Platform statistics |
+| GET | /admin/testcases | TestCasesHandler.AdminListTestCases | Admin: pending suggestions |
+| PATCH | /admin/testcases/:id | TestCasesHandler.AdminPatchTestCase | Admin: approve/reject |
+| GET | /metrics | promhttp.Handler | Prometheus metrics |
 
-### Community 10 - "Community 10"
-Cohesion: 0.12
-Nodes (16): dependencies, axios, class-variance-authority, lucide-react, monaco-editor, @monaco-editor/react, next, @radix-ui/react-dialog (+8 more)
+## Database Schema
 
-### Community 11 - "Community 11"
-Cohesion: 0.23
-Nodes (6): decodeBase64(), Judge0Client, Judge0Result, Judge0Status, SubmitRequest, SubmitResponse
+```
+problems
+  ├── id (BIGSERIAL PK)
+  ├── title, slug, description, difficulty
+  ├── examples (JSON), constraints (JSON)
+  ├── test_cases (JSON - hidden from users)
+  ├── function_signature (JSON)
+  ├── lc_number, lc_url
+  ├── total_submissions, accepted_submissions
+  └── created_at, updated_at
 
-### Community 12 - "Community 12"
-Cohesion: 0.17
-Nodes (11): API Endpoints, Architecture, code:block1 (Browser → Nginx → Go Backend → Redis (Asynq) → Judge0 (Docke), code:block2 (executo/), code:bash (cp .env.example .env), Executo, Philosophy, Project Structure (+3 more)
+submissions
+  ├── id (BIGSERIAL PK)
+  ├── problem_id (FK → problems)
+  ├── language, source_code, status
+  ├── verdict, stdout, stderr, compile_output
+  ├── runtime_ms, memory_kb
+  ├── test_cases_passed, test_cases_total
+  └── created_at, updated_at
 
-### Community 13 - "Community 13"
-Cohesion: 0.18
-Nodes (11): 1. Clone and Configure Environment, 2. Start the Full Stack, 3. Run Database Migrations, 4. Seed Sample Problems, 5. Verify Services, code:bash (git clone <your-repo-url> executo), code:bash (# Start everything (first run pulls images, takes 3-5 minute), code:bash (make migrate) (+3 more)
+suggested_testcases
+  ├── id (BIGSERIAL PK)
+  ├── problem_id (FK → problems)
+  ├── input, expected_output, note
+  ├── status (pending/approved/rejected)
+  ├── submitted_by, admin_note
+  └── created_at, updated_at
+```
 
-### Community 14 - "Community 14"
-Cohesion: 0.29
-Nodes (9): DB, getEnv(), MustNew(), New(), WithRetry(), NewJudge0Client(), NewClient(), NewWorker() (+1 more)
+## Technology Stack
 
-### Community 15 - "Community 15"
-Cohesion: 0.22
-Nodes (9): Backend can't connect to PostgreSQL, code:bash (# Check Judge0 is running), code:bash (# Check postgres is healthy), code:bash (# Check Nginx is routing correctly), code:bash (# Check Redis is running), Frontend shows "Failed to fetch", Judge0 not accepting submissions, Submissions stuck in "pending" (+1 more)
+| Layer | Technology | Version |
+|-------|-----------|---------|
+| Frontend | Next.js | 14.2.3 |
+| UI | React + TypeScript | 18.3 / 5.4 |
+| Styling | Tailwind CSS | 3.4 |
+| Editor | Monaco Editor | 0.48 |
+| HTTP Client | Axios | 1.7 |
+| Backend | Go (net/http) | 1.22 |
+| Queue | Asynq (Redis) | 0.24 |
+| Database | PostgreSQL | 15 |
+| Cache/Queue | Redis | 7 |
+| Code Execution | Judge0 CE | 1.13.1 |
+| Reverse Proxy | Nginx | 1.25 |
+| Monitoring | Prometheus + Grafana | 2.51 / 10.4 |
+| Containerization | Docker Compose | v2 |
 
-### Community 16 - "Community 16"
-Cohesion: 0.5
-Nodes (3): jsonError(), jsonOK(), TestCasesHandler
+## Communities (Key Clusters)
 
-### Community 17 - "Community 17"
-Cohesion: 0.36
-Nodes (5): isNumeric(), Metrics(), newResponseWriter(), normalizePath(), responseWriter
+### Backend Core (Community 6, 9, 14)
+Router → Handlers → DB → Models
+- High cohesion, well-structured dependency chain
+- `NewRouter()` is the main bridge connecting all backend modules
 
-### Community 18 - "Community 18"
-Cohesion: 0.25
-Nodes (5): CreateSubmissionRequest, CreateSubmissionResponse, Language, Submission, SubmissionStatus
+### Frontend Pages (Community 0, 19)
+Pages → Components → API Client → Types
+- Each page is relatively self-contained
+- Shared components (Editor, Navbar) provide consistency
 
-### Community 19 - "Community 19"
-Cohesion: 0.29
-Nodes (7): decode(), Editor, LANGUAGES, PlaygroundPage(), RunResult, RunStatus, STATUS_LABELS
+### Execution Pipeline (Community 4, 11)
+Worker → Judge0Client → Submit/Poll → Results
+- Clean separation between queue management and execution
+- Judge0Client handles all HTTP communication with Judge0
 
-### Community 22 - "Community 22"
-Cohesion: 0.4
-Nodes (3): DEFAULT_OPTIONS, EditorProps, EXECUTO_THEME
+### Infrastructure (Community 5, 12, 13)
+Docker Compose → Services → Config → Monitoring
+- Well-documented setup process
+- Clear service boundaries
 
-### Community 23 - "Community 23"
-Cohesion: 0.4
-Nodes (4): extends, rules, @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars
+## Bugs Fixed (2026-05-16)
 
-## Knowledge Gaps
-- **173 isolated node(s):** `HealthResponse`, `ipLimiter`, `DB`, `SubmitRequest`, `SubmitResponse` (+168 more)
-  These have ≤1 connection - possible missing edges or undocumented components.
-- **7 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
+1. **Missing `/run` endpoint** — Playground was calling a non-existent route (CRITICAL)
+2. **SubmissionRateLimit creating new limiter per request** — Rate limiting was ineffective
+3. **Judge0 database user mismatch** — Judge0 couldn't connect to PostgreSQL
+4. **Missing seed.sql** — `make seed` would fail
+5. **Deprecated docker-compose version key** — Caused warnings
+6. **Playground API URL construction** — Double `/api/api/` prefix in some configs
 
-## Suggested Questions
-_Questions this graph is uniquely positioned to answer:_
+## Suggested Improvements
 
-- **Why does `NewRouter()` connect `Community 6` to `Community 9`, `Community 14`, `Community 17`?**
-  _High betweenness centrality (0.040) - this node is a cross-community bridge._
-- **Why does `dependencies` connect `Community 10` to `Community 0`, `Community 2`?**
-  _High betweenness centrality (0.039) - this node is a cross-community bridge._
-- **Why does `clsx` connect `Community 0` to `Community 10`?**
-  _High betweenness centrality (0.033) - this node is a cross-community bridge._
-- **Are the 4 inferred relationships involving `writeJSON()` (e.g. with `.CreateSubmission()` and `.GetSubmission()`) actually correct?**
-  _`writeJSON()` has 4 INFERRED edges - model-reasoned connections that need verification._
-- **What connects `HealthResponse`, `ipLimiter`, `DB` to the rest of the system?**
-  _173 weakly-connected nodes found - possible documentation gaps or missing edges._
-- **Should `Community 0` be split into smaller, more focused modules?**
-  _Cohesion score 0.07 - nodes in this community are weakly interconnected._
-- **Should `Community 1` be split into smaller, more focused modules?**
-  _Cohesion score 0.07 - nodes in this community are weakly interconnected._
+- Add user authentication (JWT is configured but not enforced)
+- Add WebSocket for real-time submission status (replace polling)
+- Add Redis-backed rate limiting for horizontal scaling
+- Add database connection health check to /health endpoint
+- Add request ID middleware for distributed tracing
+- Consider adding a `/api/run` route that accepts non-base64 code for simpler testing

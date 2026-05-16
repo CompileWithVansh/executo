@@ -10,6 +10,7 @@ import (
 	"github.com/executo/backend/internal/api/handlers"
 	"github.com/executo/backend/internal/api/middleware"
 	"github.com/executo/backend/internal/db"
+	"github.com/executo/backend/internal/executor"
 	"github.com/executo/backend/internal/queue"
 )
 
@@ -20,12 +21,32 @@ func NewRouter(database *db.DB, queueClient *queue.Client) http.Handler {
 	problemsHandler := handlers.NewProblemsHandler(database)
 	submissionsHandler := handlers.NewSubmissionsHandler(database, queueClient)
 	testCasesHandler := handlers.NewTestCasesHandler(database)
+	runHandler := handlers.NewRunHandler(executor.NewJudge0Client())
 
 	// Create a new ServeMux
 	mux := http.NewServeMux()
 
 	// ── Health ──────────────────────────────────
 	mux.HandleFunc("/health", handlers.HealthHandler)
+
+	// ── Playground Run ──────────────────────────
+	// POST /run       — submit code for execution (playground)
+	// GET  /run/:token — poll for execution result
+	mux.HandleFunc("/run", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		runHandler.CreateRun(w, r)
+	})
+
+	mux.HandleFunc("/run/", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		runHandler.GetRunResult(w, r)
+	})
 
 	// ── Problems ────────────────────────────────
 	// GET /problems          — list all problems (paginated, filterable)

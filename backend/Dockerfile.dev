@@ -3,13 +3,13 @@
 #  Uses Air for live reload
 # ─────────────────────────────────────────────
 
-FROM golang:1.22-alpine
+FROM golang:1.23-alpine
 
 # Install development tools
 RUN apk add --no-cache git curl
 
-# Install Air for live reload
-RUN go install github.com/air-verse/air@latest
+# Install Air for live reload (pinned to version compatible with Go 1.23)
+RUN go install github.com/air-verse/air@v1.61.7
 
 WORKDIR /app
 

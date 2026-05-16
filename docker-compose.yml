@@ -55,11 +55,14 @@ services:
       - "2358:2358"
     privileged: true
     environment:
-      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ""
       POSTGRES_HOST: postgres
-      POSTGRES_USER: ${POSTGRES_USER:-executo}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-executo}
+      POSTGRES_USER: judge0
+      POSTGRES_PASSWORD: judge0password
       POSTGRES_DB: judge0
+      POSTGRES_PORT: "5432"
     depends_on:
       postgres:
         condition: service_healthy
@@ -79,11 +82,14 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
     privileged: true
     environment:
-      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: "6379"
+      REDIS_PASSWORD: ""
       POSTGRES_HOST: postgres
-      POSTGRES_USER: ${POSTGRES_USER:-executo}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-executo}
+      POSTGRES_USER: judge0
+      POSTGRES_PASSWORD: judge0password
       POSTGRES_DB: judge0
+      POSTGRES_PORT: "5432"
     depends_on:
       - judge0-server
     networks:
