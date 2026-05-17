@@ -86,10 +86,7 @@ interface RunResult {
 
 type RunStatus = "idle" | "running" | "success" | "error";
 
-function decode(s?: string) {
-  if (!s) return "";
-  try { return Buffer.from(s, "base64").toString("utf-8"); } catch { return s; }
-}
+
 
 export default function PlaygroundPage() {
   const [langIdx, setLangIdx]   = useState(0);
@@ -159,9 +156,9 @@ export default function PlaygroundPage() {
     setNetError(null);
   };
 
-  const stdout     = decode(result?.stdout);
-  const stderr     = decode(result?.stderr);
-  const compileErr = decode(result?.compile_output);
+  const stdout     = result?.stdout;
+  const stderr     = result?.stderr;
+  const compileErr = result?.compile_output;
   const isOk       = result?.status.id === 3;
 
   return (

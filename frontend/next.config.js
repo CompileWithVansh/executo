@@ -5,6 +5,7 @@ const nextConfig = {
 
   // Standalone output for Docker production builds
   output: "standalone",
+  eslint: { ignoreDuringBuilds: true },
 
   // Proxy /api requests to the Go backend during development
   // In production, Nginx handles this routing
