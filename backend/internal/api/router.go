@@ -22,12 +22,50 @@ func NewRouter(database *db.DB, queueClient *queue.Client) http.Handler {
 	submissionsHandler := handlers.NewSubmissionsHandler(database, queueClient)
 	testCasesHandler := handlers.NewTestCasesHandler(database)
 	runHandler := handlers.NewRunHandler(executor.NewJudge0Client())
+	authHandler := handlers.NewAuthHandler(database)
 
 	// Create a new ServeMux
 	mux := http.NewServeMux()
 
 	// ── Health ──────────────────────────────────
 	mux.HandleFunc("/health", handlers.HealthHandler)
+
+	// ── Auth ────────────────────────────────────
+	// POST /auth/register — create a new account
+	// POST /auth/login    — get JWT token
+	// GET  /auth/me       — get current user (requires auth)
+	// PUT  /auth/profile  — update bio/avatar (requires auth)
+	mux.HandleFunc("/auth/register", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		authHandler.Register(w, r)
+	})
+
+	mux.HandleFunc("/auth/login", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		authHandler.Login(w, r)
+	})
+
+	mux.HandleFunc("/auth/me", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		middleware.RequireAuth(http.HandlerFunc(authHandler.GetMe)).ServeHTTP(w, r)
+	})
+
+	mux.HandleFunc("/auth/profile", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPut {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		middleware.RequireAuth(http.HandlerFunc(authHandler.UpdateProfile)).ServeHTTP(w, r)
+	})
 
 	// ── Playground Run ──────────────────────────
 	// POST /run       — submit code for execution (playground)
@@ -125,14 +163,19 @@ func NewRouter(database *db.DB, queueClient *queue.Client) http.Handler {
 	})
 
 	// ── Admin ────────────────────────────────────
-	// GET   /admin/testcases      — list pending suggestions
-	// PATCH /admin/testcases/:id  — approve or reject
+	// GET   /admin/testcases      — list pending suggestions (admin only)
+	// PATCH /admin/testcases/:id  — approve or reject (admin only)
 	mux.HandleFunc("/admin/testcases", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		testCasesHandler.AdminListTestCases(w, r)
+		// Require auth + admin role
+		middleware.RequireAuth(
+			middleware.RequireAdmin(
+				http.HandlerFunc(testCasesHandler.AdminListTestCases),
+			),
+		).ServeHTTP(w, r)
 	})
 
 	mux.HandleFunc("/admin/testcases/", func(w http.ResponseWriter, r *http.Request) {
@@ -140,7 +183,12 @@ func NewRouter(database *db.DB, queueClient *queue.Client) http.Handler {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
-		testCasesHandler.AdminPatchTestCase(w, r)
+		// Require auth + admin role
+		middleware.RequireAuth(
+			middleware.RequireAdmin(
+				http.HandlerFunc(testCasesHandler.AdminPatchTestCase),
+			),
+		).ServeHTTP(w, r)
 	})
 
 	// ── Stats & Leaderboard ──────────────────────
@@ -165,12 +213,14 @@ func NewRouter(database *db.DB, queueClient *queue.Client) http.Handler {
 	mux.Handle("/metrics", promhttp.Handler())
 
 	// ── Apply Global Middleware ──────────────────
-	// Order: CORS → Rate Limit → Metrics → Router
+	// Order: RequestID → CORS → Rate Limit → Metrics → Router
 	globalRateLimiter := middleware.NewRateLimiter(100, 200) // 100 req/s, burst 200
 
-	handler := middleware.CORS(
-		globalRateLimiter.Limit(
-			middleware.Metrics(mux),
+	handler := middleware.RequestID(
+		middleware.CORS(
+			globalRateLimiter.Limit(
+				middleware.Metrics(mux),
+			),
 		),
 	)
 
