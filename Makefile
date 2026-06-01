@@ -138,6 +138,15 @@ clean: ## Remove all containers, volumes, and build artifacts
 	rm -rf frontend/.next
 	rm -rf frontend/node_modules
 
+status: ## Quick status check (containers + ports)
+	@echo "── Container Status ──"
+	@docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Ports}}"
+	@echo ""
+	@echo "── Health Checks ──"
+	@curl -sf http://localhost:8080/health > /dev/null 2>&1 && echo "  ✓ Backend (8080)" || echo "  ✗ Backend (8080)"
+	@curl -sf http://localhost:3000 > /dev/null 2>&1 && echo "  ✓ Frontend (3000)" || echo "  ✗ Frontend (3000)"
+	@curl -sf http://localhost:2358/about > /dev/null 2>&1 && echo "  ✓ Judge0 (2358)" || echo "  ✗ Judge0 (2358)"
+
 health: ## Check health of all services
 	@echo "Checking service health..."
 	@curl -sf http://localhost:8080/health && echo "✓ Backend" || echo "✗ Backend"
